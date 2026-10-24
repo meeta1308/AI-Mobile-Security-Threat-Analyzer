@@ -34,9 +34,11 @@ jobs:
 
       - name: Build debug APK
         run: |
-         
-          GRADLEW_DIR=$(find . -name gradlew -exec dirname {} \;)
-          cd "$GRADLEW_DIR"
+        
+          if [ ! -f gradlew ]; then
+            echo "gradlew not found, generating a new one..."
+            gradle wrapper
+          fi
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
