@@ -34,7 +34,25 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --stacktrace --info 2>&1 | tee build.log
+
+      - name: Show build error summary
+        if: failure()
+        run: |
+          echo "## Build failure details" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f build.log ]; then
+            grep -n -A 10 -B 3 -E "What went wrong:|Execution failed for task|e: |error:" build.log | tail -n 100 >> "$GITHUB_STEP_SUMMARY" || tail -n 100 build.log >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Build log was not created. Check the earlier failed step." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload diagnostic log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: build.log
+          if-no-files-found: warn
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
