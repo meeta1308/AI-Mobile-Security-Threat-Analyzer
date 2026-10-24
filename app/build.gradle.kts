@@ -4,14 +4,23 @@ plugins {
 }
 
 android {
-    namespace = "com.example.mobilesecurityanalyzer"
+    namespace = "com.example.mobilesecuritythreatanalyzer"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.mobilesecurityanalyzer"
+        applicationId = "com.example.mobilesecuritythreatanalyzer"
         minSdk = 23
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
     }
 }
