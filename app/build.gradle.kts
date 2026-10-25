@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+
 android {
     namespace = "com.example.mobilesecuritythreatanalyzer"
     compileSdk = 35
@@ -24,3 +25,4 @@ android {
         jvmTarget = "17"
     }
 }
+
