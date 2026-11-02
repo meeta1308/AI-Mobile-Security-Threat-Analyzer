@@ -30,6 +30,316 @@ def normalize_permissions(values):
 
     return result
 
+# ==========================================
+# ADVANCED RISK SCORING ENGINE - VERSION 1
+# ==========================================
+
+RISK_ENGINE_VERSION = "1.0"
+
+# Maximum points allocated to each category.
+RISK_CATEGORY_LIMITS = {
+    "permission_sensitivity": 40,
+    "permission_combinations": 25,
+    "purpose_mismatch": 20,
+    "granted_access_exposure": 15
+}
+
+# Sensitivity weights for recognized Android permissions.
+# These are project-defined heuristic weights, not malware probabilities.
+PERMISSION_WEIGHTS = {
+    "READ_SMS": 10,
+    "RECEIVE_SMS": 8,
+    "SEND_SMS": 10,
+    "READ_CALL_LOG": 9,
+    "WRITE_CALL_LOG": 9,
+    "READ_CONTACTS": 7,
+    "WRITE_CONTACTS": 7,
+    "ACCESS_FINE_LOCATION": 8,
+    "ACCESS_COARSE_LOCATION": 4,
+    "ACCESS_BACKGROUND_LOCATION": 10,
+    "RECORD_AUDIO": 8,
+    "CAMERA": 5,
+    "READ_MEDIA_IMAGES": 3,
+    "READ_MEDIA_VIDEO": 3,
+    "READ_MEDIA_AUDIO": 3,
+    "READ_EXTERNAL_STORAGE": 4,
+    "WRITE_EXTERNAL_STORAGE": 5,
+    "READ_PHONE_STATE": 6,
+    "CALL_PHONE": 8,
+    "INTERNET": 1
+}
+
+# Permission combinations that deserve additional review.
+# Each combination is counted only once.
+RISKY_COMBINATIONS = [
+    {
+        "permissions": {"ACCESS_FINE_LOCATION", "RECORD_AUDIO"},
+        "points": 8,
+        "reason": "Location and microphone access are requested together."
+    },
+    {
+        "permissions": {"READ_SMS", "READ_CONTACTS"},
+        "points": 8,
+        "reason": "SMS and contact information can expose personal data."
+    },
+    {
+        "permissions": {"READ_CALL_LOG", "READ_CONTACTS"},
+        "points": 6,
+        "reason": "Call history and contact information are both accessible."
+    },
+    {
+        "permissions": {"CAMERA", "RECORD_AUDIO"},
+        "points": 5,
+        "reason": "Camera and microphone access are requested together."
+    },
+    {
+        "permissions": {
+            "ACCESS_FINE_LOCATION",
+            "ACCESS_BACKGROUND_LOCATION"
+        },
+        "points": 5,
+        "reason": "Foreground and background location access are requested."
+    }
+]
+
+# Permissions and keywords that can help establish app-purpose relevance.
+PURPOSE_RULES = {
+    "CAMERA": {
+        "keywords": [
+            "camera", "photography", "photo", "video",
+            "recording", "scan", "scanner", "qr"
+        ],
+        "points": 4
+    },
+    "RECORD_AUDIO": {
+        "keywords": [
+            "audio", "voice", "recording", "microphone",
+            "music", "call", "video call"
+        ],
+        "points": 4
+    },
+    "ACCESS_FINE_LOCATION": {
+        "keywords": [
+            "map", "navigation", "location", "delivery",
+            "tracking", "ride", "weather", "travel"
+        ],
+        "points": 5
+    },
+    "ACCESS_COARSE_LOCATION": {
+        "keywords": [
+            "map", "navigation", "location", "delivery",
+            "tracking", "ride", "weather", "travel"
+        ],
+        "points": 3
+    },
+    "READ_CONTACTS": {
+        "keywords": [
+            "contact", "messaging", "social", "communication",
+            "address book"
+        ],
+        "points": 4
+    },
+    "READ_SMS": {
+        "keywords": [
+            "sms", "message", "messaging", "otp"
+        ],
+        "points": 5
+    },
+    "READ_CALL_LOG": {
+        "keywords": [
+            "call", "dialer", "phone", "communication"
+        ],
+        "points": 5
+    },
+    "READ_MEDIA_IMAGES": {
+        "keywords": [
+            "photo", "gallery", "image", "editing",
+            "social", "camera"
+        ],
+        "points": 3
+    },
+    "READ_MEDIA_VIDEO": {
+        "keywords": [
+            "video", "gallery", "editing", "camera"
+        ],
+        "points": 3
+    }
+}
+
+
+def calculate_advanced_risk(app_data):
+    """
+    Calculate a consistent, rule-based risk score.
+
+    This engine evaluates permission metadata only.
+    It does not establish whether an app is malicious.
+    """
+
+    requested = set(app_data.get("requested_permissions", []))
+    granted = set(app_data.get("granted_permissions", []))
+
+    # --------------------------------------
+    # 1. Permission sensitivity (maximum 40)
+    # --------------------------------------
+
+    sensitivity_raw = sum(
+        PERMISSION_WEIGHTS.get(permission, 0)
+        for permission in requested
+    )
+
+    sensitivity_score = min(
+        sensitivity_raw,
+        RISK_CATEGORY_LIMITS["permission_sensitivity"]
+    )
+
+    # --------------------------------------
+    # 2. Permission combinations (maximum 25)
+    # --------------------------------------
+
+    combination_findings = []
+    combination_raw = 0
+
+    for rule in RISKY_COMBINATIONS:
+        if rule["permissions"].issubset(requested):
+            combination_raw += rule["points"]
+
+            combination_findings.append({
+                "permissions": sorted(rule["permissions"]),
+                "points": rule["points"],
+                "reason": rule["reason"]
+            })
+
+    combination_score = min(
+        combination_raw,
+        RISK_CATEGORY_LIMITS["permission_combinations"]
+    )
+
+    # --------------------------------------
+    # 3. App-purpose mismatch (maximum 20)
+    # --------------------------------------
+
+    purpose = (
+        app_data.get("app_purpose", "") + " " +
+        app_data.get("app_category", "")
+    ).lower()
+
+    mismatch_findings = []
+    mismatch_raw = 0
+
+    if purpose.strip():
+        for permission, rule in PURPOSE_RULES.items():
+
+            if permission not in requested:
+                continue
+
+            relevant = any(
+                keyword in purpose
+                for keyword in rule["keywords"]
+            )
+
+            if not relevant:
+                mismatch_raw += rule["points"]
+
+                mismatch_findings.append({
+                    "permission": permission,
+                    "points": rule["points"],
+                    "reason": (
+                        "The supplied app purpose does not clearly "
+                        "explain why this permission is needed."
+                    )
+                })
+
+    purpose_score = min(
+        mismatch_raw,
+        RISK_CATEGORY_LIMITS["purpose_mismatch"]
+    )
+
+    # --------------------------------------
+    # 4. Granted access exposure (maximum 15)
+    # --------------------------------------
+
+    granted_raw = sum(
+        max(1, PERMISSION_WEIGHTS.get(permission, 0) // 3)
+        for permission in granted
+        if PERMISSION_WEIGHTS.get(permission, 0) >= 4
+    )
+
+    granted_score = min(
+        granted_raw,
+        RISK_CATEGORY_LIMITS["granted_access_exposure"]
+    )
+
+    # --------------------------------------
+    # 5. Final score and risk classification
+    # --------------------------------------
+
+    total_score = min(
+        100,
+        sensitivity_score +
+        combination_score +
+        purpose_score +
+        granted_score
+    )
+
+    if total_score >= 75:
+        risk_level = "CRITICAL"
+    elif total_score >= 50:
+        risk_level = "HIGH"
+    elif total_score >= 25:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
+
+    # --------------------------------------
+    # 6. Assessment limitations
+    # --------------------------------------
+
+    limitations = []
+
+    if not purpose.strip():
+        limitations.append(
+            "App purpose was not supplied. Purpose mismatch "
+            "could not be evaluated."
+        )
+
+    if not granted:
+        limitations.append(
+            "No confirmed granted permissions were supplied. "
+            "Granted access exposure may be incomplete."
+        )
+
+    if not requested:
+        limitations.append(
+            "No requested permissions were supplied."
+        )
+
+    return {
+        "risk_engine_version": RISK_ENGINE_VERSION,
+        "risk_score": total_score,
+        "risk_level": risk_level,
+        "score_breakdown": {
+            "permission_sensitivity": {
+                "score": sensitivity_score,
+                "maximum": 40
+            },
+            "permission_combinations": {
+                "score": combination_score,
+                "maximum": 25,
+                "findings": combination_findings
+            },
+            "purpose_mismatch": {
+                "score": purpose_score,
+                "maximum": 20,
+                "findings": mismatch_findings
+            },
+            "granted_access_exposure": {
+                "score": granted_score,
+                "maximum": 15
+            }
+        },
+        "limitations": limitations
+    }
+
 
 def safe_text(value, max_length=300):
     """Accept only short text values from the app."""
