@@ -359,7 +359,7 @@ def extract_json(text):
     return json.loads(text)
 
 
-def analyze_with_gemini(app_data):
+def analyze_with_gemini(app_data, risk_assessment):
     """Ask Gemini to analyze app permission metadata."""
 
     client = genai.Client(
@@ -412,12 +412,12 @@ Return ONLY valid JSON in this exact structure:
 }
 
 Scoring guidance:
-- risk_score must be an integer from 0 to 100.
-- LOW: 0 to 29
-- MEDIUM: 30 to 59
-- HIGH: 60 to 100
-- Consider sensitivity, app purpose, unnecessary access and granted status.
-- Do not automatically assign high risk to every sensitive permission.
+- The risk score and risk level are calculated by an independent
+  deterministic backend scoring engine.
+- Never recalculate, modify or override the supplied risk score.
+- Use the supplied risk assessment to explain the result.
+- Explain the score breakdown accurately.
+- Do not describe an app as malicious based only on permissions.
 - If information is insufficient, explain the uncertainty.
 - Include findings for the supplied permissions.
 - Severity must be LOW, MEDIUM or HIGH.
@@ -425,9 +425,13 @@ Scoring guidance:
 """
 
     user_prompt = (
-        "Analyze this Android application metadata:\n"
-        + json.dumps(app_data, ensure_ascii=True)
-    )
+    "Analyze this Android application metadata and explain "
+    "the supplied deterministic risk assessment.\n\n"
+    "APPLICATION METADATA:\n"
+    + json.dumps(app_data, ensure_ascii=True)
+    + "\n\nDETERMINISTIC RISK ASSESSMENT:\n"
+    + json.dumps(risk_assessment, ensure_ascii=True)
+)
 
     response = client.models.generate_content(
         model=GEMINI_MODEL,
@@ -537,27 +541,20 @@ def analyze():
             "unknown or unreported status."
         )
     }
-
+   risk_assessment = calculate_advanced_risk(app_data)
     if not GEMINI_API_KEY:
         return jsonify({
             "error": "AI service is not configured on the server."
         }), 503
 
     try:
-        ai_result = analyze_with_gemini(app_data)
+        ai_result = analyze_with_gemini(
+           app_data,
+           risk_assessment
+       )
 
-        score = ai_result.get("risk_score")
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
-            raise ValueError("AI returned an invalid risk score.")
-
-        score = max(0, min(100, int(score)))
-
-        # Enforce risk level from the validated score.
-        risk_level = (
-            "HIGH" if score >= 60
-            else "MEDIUM" if score >= 30
-            else "LOW"
-        )
+        score = risk_assessment["risk_score"]
+        risk_level = risk_assessment["risk_level"]
 
         findings = ai_result.get("findings", [])
         recommendations = ai_result.get("recommendations", [])
@@ -606,6 +603,8 @@ def analyze():
 
         return jsonify({
             "analysis_type": "gemini_ai",
+            "risk_engine_version": risk_assessment["risk_engine_version"],
+            "score_breakdown": risk_assessment["score_breakdown"],
             "risk_score": score,
             "risk_level": risk_level,
             "summary": safe_text(ai_result.get("summary"), 1000),
@@ -616,7 +615,9 @@ def analyze():
             "not_granted_permissions": not_granted,
             "findings": clean_findings,
             "recommendations": clean_recommendations,
-            "limitations": clean_limitations,
+            "limitations": list(dict.fromkeys(
+                clean_limitations + risk_assessment["limitations"]
+            )),
             "disclaimer": (
                 "This is an advisory assessment based on supplied "
                 "permission metadata. It does not prove that an app "
