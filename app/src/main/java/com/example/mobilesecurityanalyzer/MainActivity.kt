@@ -736,6 +736,18 @@ class MainActivity : Activity() {
             selectedAppName = appName
             selectedAppPermissions = requestedPermissions.toList()
             selectedAppGrantedPermissions = grantedPermissions
+            // Automatically update permission checkboxes
+permissionChecks.forEach { (permission, checkBox) ->
+
+    val isRequested = requestedPermissions.any {
+        it.substringAfterLast('.') == permission
+    }
+
+    checkBox.isChecked = isRequested
+
+    // Lock checkboxes while an installed app is selected
+    checkBox.isEnabled = false
+}
 
             val permissionSummary =
                 if (requestedPermissions.isEmpty()) {
@@ -785,24 +797,31 @@ class MainActivity : Activity() {
 
     // CLEAR SELECTED APP
 
-    private fun clearSelectedApp() {
+    
+private fun clearSelectedApp() {
 
-        selectedAppPackage = null
-        selectedAppName = null
-        selectedAppPermissions = emptyList()
-        selectedAppGrantedPermissions = emptySet()
+    selectedAppPackage = null
+    selectedAppName = null
+    selectedAppPermissions = emptyList()
+    selectedAppGrantedPermissions = emptySet()
 
-        selectedAppView.text =
-            "No app selected. You can use manual permission analysis below."
-
-        clearAppButton.visibility = View.GONE
-
-        resultBadge.text = "WAITING"
-        resultBadge.setTextColor(secondaryText)
-
-        resultView.text =
-            "App selection cleared.\n\nYou can now select permissions manually."
+    // Reset and unlock all permission checkboxes
+    permissionChecks.forEach { (_, checkBox) ->
+        checkBox.isChecked = false
+        checkBox.isEnabled = true
     }
+
+    selectedAppView.text =
+        "No app selected. You can use manual permission analysis below."
+
+    clearAppButton.visibility = View.GONE
+
+    resultBadge.text = "WAITING"
+    resultBadge.setTextColor(secondaryText)
+
+    resultView.text =
+        "App selection cleared.\n\nYou can now select permissions manually."
+}
 
     // EXISTING BACKEND ANALYSIS LOGIC + APP ANALYSIS
 
