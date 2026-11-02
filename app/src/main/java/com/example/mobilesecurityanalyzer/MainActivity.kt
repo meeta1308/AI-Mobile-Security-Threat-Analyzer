@@ -1,5 +1,5 @@
 
-package com.example.mobilesecurityanalyzer
+package com.example.mobilesecuritythreatanalyzer
 
 import android.app.Activity
 import android.os.Bundle
