@@ -946,34 +946,35 @@ class MainActivity : Activity() {
                         append("$appName\n")
                         append("Package: $appPackage\n\n")
 
-                        append("DECLARED PERMISSIONS\n")
+                       append("KEY PERMISSIONS\n")
 
-                        if (selectedAppPermissions.isEmpty()) {
-                            append("No declared permissions found.\n")
-                        } else {
+val relevantPermissions = selectedAppPermissions
+    .filter { permission ->
+        permissionDescriptions.containsKey(
+            permission.substringAfterLast('.')
+        )
+    }
+    .distinct()
 
-                            selectedAppPermissions.forEach { permission ->
+if (relevantPermissions.isEmpty()) {
+    append("No supported permissions found.\n")
+} else {
+    relevantPermissions.forEach { permission ->
+        val shortName = permission.substringAfterLast('.')
 
-                                val shortName =
-                                    permission.substringAfterLast('.')
+        val status = if (
+            selectedAppGrantedPermissions.contains(permission)
+        ) {
+            "Granted"
+        } else {
+            "Not granted"
+        }
 
-                                val grantStatus =
-                                    if (
-                                        selectedAppGrantedPermissions.contains(
-                                            permission
-                                        )
-                                    ) {
-                                        "Granted (reported)"
-                                    } else {
-                                        "Not reported as granted"
-                                    }
+        append("• $shortName — $status\n")
+    }
+}
 
-                                append("• $shortName\n")
-                                append("  Status: $grantStatus\n")
-                            }
-                        }
-
-                        append("\n")
+append("\n")
                     }
 
                     append("RISK LEVEL\n")
