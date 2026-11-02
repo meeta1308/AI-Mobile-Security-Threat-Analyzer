@@ -24,5 +24,10 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+     buildTypes {
+        release {
+            isDebuggable = false
+            isMinifyEnabled = false
+        }
 }
 
