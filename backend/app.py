@@ -52,7 +52,15 @@ def extract_json(text):
 def analyze_with_gemini(app_data):
     """Ask Gemini to analyze app permission metadata."""
 
-    client = genai.Client(api_key=GEMINI_API_KEY)
+   client = genai.Client(
+    api_key=GEMINI_API_KEY,
+    http_options=types.HttpOptions(
+        timeout=20000,
+        retry_options=types.HttpRetryOptions(
+            attempts=1
+        )
+    )
+)
 
     system_prompt = """
 You are a mobile application security analysis assistant.
