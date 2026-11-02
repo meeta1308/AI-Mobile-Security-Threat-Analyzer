@@ -428,7 +428,9 @@ class MainActivity : Activity() {
             )
 
             card.setOnClickListener {
-                checkBox.isChecked = !checkBox.isChecked
+                if (checkBox.isEnabled) {
+                    checkBox.isChecked = !checkBox.isChecked
+                }
             }
 
             content.addView(
@@ -736,18 +738,18 @@ class MainActivity : Activity() {
             selectedAppName = appName
             selectedAppPermissions = requestedPermissions.toList()
             selectedAppGrantedPermissions = grantedPermissions
+
             // Automatically update permission checkboxes
-permissionChecks.forEach { (permission, checkBox) ->
 
-    val isRequested = requestedPermissions.any {
-        it.substringAfterLast('.') == permission
-    }
+            permissionChecks.forEach { (permission, checkBox) ->
 
-    checkBox.isChecked = isRequested
+                val isRequested = requestedPermissions.any {
+                    it.substringAfterLast('.') == permission
+                }
 
-    // Lock checkboxes while an installed app is selected
-    checkBox.isEnabled = false
-}
+                checkBox.isChecked = isRequested
+                checkBox.isEnabled = false
+            }
 
             val permissionSummary =
                 if (requestedPermissions.isEmpty()) {
@@ -797,41 +799,40 @@ permissionChecks.forEach { (permission, checkBox) ->
 
     // CLEAR SELECTED APP
 
-    
-private fun clearSelectedApp() {
+    private fun clearSelectedApp() {
 
-    selectedAppPackage = null
-    selectedAppName = null
-    selectedAppPermissions = emptyList()
-    selectedAppGrantedPermissions = emptySet()
+        selectedAppPackage = null
+        selectedAppName = null
+        selectedAppPermissions = emptyList()
+        selectedAppGrantedPermissions = emptySet()
 
-    // Reset and unlock all permission checkboxes
-    permissionChecks.forEach { (_, checkBox) ->
-        checkBox.isChecked = false
-        checkBox.isEnabled = true
+        // Reset and unlock all permission checkboxes
+
+        permissionChecks.forEach { (_, checkBox) ->
+            checkBox.isChecked = false
+            checkBox.isEnabled = true
+        }
+
+        selectedAppView.text =
+            "No app selected. You can use manual permission analysis below."
+
+        clearAppButton.visibility = View.GONE
+
+        resultBadge.text = "WAITING"
+        resultBadge.setTextColor(secondaryText)
+
+        resultView.text =
+            "App selection cleared.\n\nYou can now select permissions manually."
     }
 
-    selectedAppView.text =
-        "No app selected. You can use manual permission analysis below."
-
-    clearAppButton.visibility = View.GONE
-
-    resultBadge.text = "WAITING"
-    resultBadge.setTextColor(secondaryText)
-
-    resultView.text =
-        "App selection cleared.\n\nYou can now select permissions manually."
-}
-
-    // EXISTING BACKEND ANALYSIS LOGIC + APP ANALYSIS
+    // BACKEND ANALYSIS + GEMINI AI REPORT
 
     private fun analyzeSelection() {
 
         val appPackage = selectedAppPackage
         val appName = selectedAppName
 
-        // If an app is selected, use its supported declared permissions.
-        // Otherwise, preserve the original manual selection behavior.
+        // Get selected permissions
 
         val selected: List<String> =
             if (appPackage != null) {
@@ -902,13 +903,51 @@ private fun clearSelectedApp() {
                     )
                 }
 
-                // Preserve the existing backend request format.
+                // Prepare permission status information
+
+                val granted = selectedAppGrantedPermissions
+                    .map {
+                        it.substringAfterLast('.')
+                    }
+                    .filter {
+                        it in selected
+                    }
+
+                val notGranted = selected.filter {
+                    it !in granted
+                }
+
+                // Prepare backend request
 
                 val requestBody = JSONObject().apply {
+
                     put(
                         "permissions",
                         JSONArray(selected)
                     )
+
+                    if (appPackage != null) {
+
+                        put(
+                            "app_name",
+                            appName ?: "Unknown App"
+                        )
+
+                        put(
+                            "package_name",
+                            appPackage
+                        )
+
+                        put(
+                            "granted_permissions",
+                            JSONArray(granted)
+                        )
+
+                        put(
+                            "not_granted_permissions",
+                            JSONArray(notGranted)
+                        )
+                    }
                 }
 
                 connection.outputStream.use { output ->
@@ -918,6 +957,8 @@ private fun clearSelectedApp() {
                             .toByteArray(Charsets.UTF_8)
                     )
                 }
+
+                // Read server response
 
                 val statusCode = connection.responseCode
 
@@ -943,6 +984,8 @@ private fun clearSelectedApp() {
 
                 val response = JSONObject(responseText)
 
+                // Extract AI analysis results
+
                 val score = response.getInt("risk_score")
                 val level = response.getString("risk_level")
 
@@ -957,6 +1000,16 @@ private fun clearSelectedApp() {
                     "Permission indicators alone do not prove malicious behavior."
                 )
 
+                val aiSummary = response.optString(
+                    "summary",
+                    ""
+                )
+
+                val recommendations =
+                    response.optJSONArray("recommendations")
+
+                // Build final report
+
                 val result = buildString {
 
                     if (appPackage != null) {
@@ -965,78 +1018,131 @@ private fun clearSelectedApp() {
                         append("$appName\n")
                         append("Package: $appPackage\n\n")
 
-                       append("KEY PERMISSIONS\n")
+                        append("KEY PERMISSIONS\n")
 
-val relevantPermissions = selectedAppPermissions
-    .filter { permission ->
-        permissionDescriptions.containsKey(
-            permission.substringAfterLast('.')
-        )
-    }
-    .distinct()
+                        val relevantPermissions =
+                            selectedAppPermissions
+                                .filter { permission ->
+                                    permissionDescriptions.containsKey(
+                                        permission.substringAfterLast('.')
+                                    )
+                                }
+                                .distinct()
 
-if (relevantPermissions.isEmpty()) {
-    append("No supported permissions found.\n")
-} else {
-    relevantPermissions.forEach { permission ->
-        val shortName = permission.substringAfterLast('.')
+                        if (relevantPermissions.isEmpty()) {
 
-        val status = if (
-            selectedAppGrantedPermissions.contains(permission)
-        ) {
-            "Granted"
-        } else {
-            "Not granted"
-        }
+                            append("No supported permissions found.\n")
 
-        append("• $shortName — $status\n")
-    }
-}
+                        } else {
 
-append("\n")
+                            relevantPermissions.forEach { permission ->
+
+                                val shortName =
+                                    permission.substringAfterLast('.')
+
+                                val status =
+                                    if (
+                                        selectedAppGrantedPermissions.contains(
+                                            permission
+                                        )
+                                    ) {
+                                        "Granted"
+                                    } else {
+                                        "Not granted"
+                                    }
+
+                                append(
+                                    "• $shortName — $status\n"
+                                )
+                            }
+                        }
+
+                        append("\n")
                     }
+
+                    // AI SUMMARY
+
+                    append("AI SECURITY SUMMARY\n")
+                    append("$aiSummary\n\n")
+
+                    // AI RECOMMENDATIONS
+
+                    append("AI RECOMMENDATIONS\n")
+
+                    if (recommendations != null) {
+
+                        for (i in 0 until recommendations.length()) {
+
+                            append(
+                                "• ${recommendations.getString(i)}\n"
+                            )
+                        }
+                    }
+
+                    append("\n")
+
+                    // RISK LEVEL
 
                     append("RISK LEVEL\n")
                     append("$level\n\n")
 
+                    // RISK SCORE
+
                     append("RISK SCORE\n")
                     append("$score / 100\n\n")
+
+                    // PERMISSIONS ANALYZED
 
                     append("PERMISSIONS ANALYZED\n")
 
                     for (i in 0 until permissions.length()) {
-                        append("• ${permissions.getString(i)}\n")
+
+                        append(
+                            "• ${permissions.getString(i)}\n"
+                        )
                     }
+
+                    // SECURITY FINDINGS
 
                     append("\nSECURITY FINDINGS\n\n")
 
                     for (i in 0 until findings.length()) {
 
-                        val finding = findings.getJSONObject(i)
+                        val finding =
+                            findings.getJSONObject(i)
 
                         append(
-                            "• ${finding.getString("permission")}\n"
+                            "• ${finding.optString("permission")}\n"
                         )
 
                         append(
-                            "  Severity: ${finding.getString("severity")}\n"
+                            "  Severity: ${finding.optString("severity")}\n"
                         )
 
                         append(
-                            "  ${finding.getString("message")}\n\n"
+                            "  Reason: ${finding.optString("reason")}\n"
+                        )
+
+                        append(
+                            "  Recommendation: ${finding.optString("recommendation")}\n\n"
                         )
                     }
+
+                    // DISCLAIMER
 
                     append("DISCLAIMER\n")
                     append(disclaimerText)
 
                     if (appPackage != null) {
+
                         append(
                             "\n\nNote: This report analyzes declared permission information. " +
                             "It does not prove that the selected app is malicious or monitor its behavior."
                         )
                     }
                 }
+
+                // Update UI after successful analysis
 
                 runOnUiThread {
 
@@ -1073,6 +1179,8 @@ append("\n")
 
             } catch (e: Exception) {
 
+                // Handle errors
+
                 runOnUiThread {
 
                     resultBadge.text = "ERROR"
@@ -1086,6 +1194,8 @@ append("\n")
             } finally {
 
                 connection?.disconnect()
+
+                // Re-enable button
 
                 runOnUiThread {
 
