@@ -2,6 +2,11 @@
 package com.example.mobilesecuritythreatanalyzer
 
 import android.app.Activity
+import android.app.AlertDialog
+import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.graphics.Color
 import android.graphics.Typeface
@@ -27,6 +32,16 @@ class MainActivity : Activity() {
     private lateinit var analyzeButton: Button
     private lateinit var resultBadge: TextView
     private lateinit var resultTitle: TextView
+
+    // Installed app selection
+    private var selectedAppPackage: String? = null
+    private var selectedAppName: String? = null
+    private var selectedAppPermissions: List<String> = emptyList()
+    private var selectedAppGrantedPermissions: Set<String> = emptySet()
+
+    private lateinit var selectedAppView: TextView
+    private lateinit var selectAppButton: Button
+    private lateinit var clearAppButton: Button
 
     // Modern Navy + Cyan Theme
     private val navy = Color.rgb(12, 25, 48)
@@ -77,7 +92,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         createDashboard()
     }
 
@@ -179,7 +193,6 @@ class MainActivity : Activity() {
         }
 
         header.addView(topLabel)
-
         addSpace(header, 18)
 
         val title = createText(
@@ -190,7 +203,6 @@ class MainActivity : Activity() {
         )
 
         header.addView(title)
-
         addSpace(header, 12)
 
         val subtitle = createText(
@@ -200,7 +212,6 @@ class MainActivity : Activity() {
         )
 
         header.addView(subtitle)
-
         addSpace(header, 20)
 
         val status = TextView(this).apply {
@@ -230,9 +241,92 @@ class MainActivity : Activity() {
             )
         )
 
+        // INSTALLED APP SELECTION SECTION
+
         addSpace(content, 25)
 
+        content.addView(
+            createText(
+                "Select Installed App",
+                21f,
+                darkText,
+                true
+            )
+        )
+
+        addSpace(content, 5)
+
+        content.addView(
+            createText(
+                "Choose an installed launcher app to inspect its declared permissions.",
+                13f,
+                secondaryText
+            )
+        )
+
+        addSpace(content, 13)
+
+        selectedAppView = createText(
+            "No app selected. You can use manual permission analysis below.",
+            13f,
+            secondaryText
+        )
+
+        selectedAppView.setLineSpacing(dp(4).toFloat(), 1f)
+        content.addView(selectedAppView)
+
+        addSpace(content, 12)
+
+        selectAppButton = Button(this).apply {
+            text = "SELECT INSTALLED APP"
+            textSize = 14f
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(navy)
+            isAllCaps = false
+            background = roundedBackground(cyan, 14)
+
+            setOnClickListener {
+                showInstalledApps()
+            }
+        }
+
+        content.addView(
+            selectAppButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(54)
+            )
+        )
+
+        addSpace(content, 7)
+
+        clearAppButton = Button(this).apply {
+            text = "CLEAR APP SELECTION"
+            textSize = 12f
+            setTextColor(navy)
+            isAllCaps = false
+            background = roundedBackground(
+                Color.rgb(226, 239, 250),
+                12
+            )
+            visibility = View.GONE
+
+            setOnClickListener {
+                clearSelectedApp()
+            }
+        }
+
+        content.addView(
+            clearAppButton,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(45)
+            )
+        )
+
         // PERMISSION SECTION
+
+        addSpace(content, 25)
 
         content.addView(
             createText(
@@ -247,7 +341,7 @@ class MainActivity : Activity() {
 
         content.addView(
             createText(
-                "Select the permissions you want to analyze.",
+                "Select permissions manually, or select an installed app above.",
                 13f,
                 secondaryText
             )
@@ -284,7 +378,6 @@ class MainActivity : Activity() {
                         secondaryText
                     )
                 )
-
                 isClickable = true
             }
 
@@ -314,9 +407,7 @@ class MainActivity : Activity() {
             )
 
             textContainer.addView(permissionTitle)
-
             addSpace(textContainer, 4)
-
             textContainer.addView(permissionDescription)
 
             card.addView(
@@ -453,13 +544,12 @@ class MainActivity : Activity() {
         }
 
         resultHeader.addView(resultBadge)
-
         resultCard.addView(resultHeader)
 
         addSpace(resultCard, 15)
 
         resultView = createText(
-            "Your security analysis will appear here.\n\nSelect permissions above and tap Analyze Security Risks to get your report.",
+            "Your security analysis will appear here.\n\nSelect permissions above or choose an installed app, then tap Analyze Security Risks.",
             14f,
             secondaryText
         ).apply {
@@ -507,7 +597,7 @@ class MainActivity : Activity() {
 
         disclaimerCard.addView(
             createText(
-                "Permission indicators alone cannot prove an app is malicious. This prototype does not automatically scan installed apps or inspect their behavior.",
+                "Declared permissions indicate what an app requests, not necessarily what it currently uses. Permission indicators alone cannot prove that an app is malicious. This prototype does not monitor app behavior.",
                 12f,
                 Color.rgb(69, 91, 116)
             )
@@ -541,19 +631,221 @@ class MainActivity : Activity() {
         setContentView(root)
     }
 
-    // EXISTING BACKEND ANALYSIS LOGIC
+    // INSTALLED APP LIST
+
+    @Suppress("DEPRECATION")
+    private fun showInstalledApps() {
+
+        try {
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+
+            val installedApps: List<ResolveInfo> =
+                packageManager.queryIntentActivities(intent, 0)
+                    .distinctBy {
+                        it.activityInfo.packageName
+                    }
+                    .sortedBy {
+                        it.loadLabel(packageManager)
+                            .toString()
+                            .lowercase()
+                    }
+
+            if (installedApps.isEmpty()) {
+                selectedAppView.text = "No launcher apps found."
+                return
+            }
+
+            val appNames = installedApps.map {
+                it.loadLabel(packageManager).toString()
+            }.toTypedArray()
+
+            AlertDialog.Builder(this)
+                .setTitle("Select an Installed App")
+                .setItems(appNames) { _, position ->
+
+                    val appInfo = installedApps[position]
+
+                    val appName =
+                        appInfo.loadLabel(packageManager).toString()
+
+                    val packageName =
+                        appInfo.activityInfo.packageName
+
+                    loadSelectedApp(packageName, appName)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+
+        } catch (e: Exception) {
+
+            selectedAppView.text =
+                "Unable to load installed apps: ${e.message}"
+        }
+    }
+
+    // READ SELECTED APP PERMISSIONS
+
+    @Suppress("DEPRECATION")
+    private fun loadSelectedApp(
+        packageName: String,
+        appName: String
+    ) {
+
+        try {
+
+            val packageInfo: PackageInfo =
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+
+                    packageManager.getPackageInfo(
+                        packageName,
+                        PackageManager.PackageInfoFlags.of(
+                            PackageManager.GET_PERMISSIONS.toLong()
+                        )
+                    )
+
+                } else {
+
+                    packageManager.getPackageInfo(
+                        packageName,
+                        PackageManager.GET_PERMISSIONS
+                    )
+                }
+
+            val requestedPermissions =
+                packageInfo.requestedPermissions ?: emptyArray()
+
+            val permissionFlags =
+                packageInfo.requestedPermissionsFlags ?: IntArray(0)
+
+            val grantedPermissions = mutableSetOf<String>()
+
+            requestedPermissions.forEachIndexed { index, permission ->
+
+                val flags = permissionFlags.getOrNull(index) ?: 0
+
+                if (
+                    flags and PackageInfo.REQUESTED_PERMISSION_GRANTED != 0
+                ) {
+                    grantedPermissions.add(permission)
+                }
+            }
+
+            selectedAppPackage = packageName
+            selectedAppName = appName
+            selectedAppPermissions = requestedPermissions.toList()
+            selectedAppGrantedPermissions = grantedPermissions
+
+            val permissionSummary =
+                if (requestedPermissions.isEmpty()) {
+                    "No declared permissions found."
+                } else {
+                    requestedPermissions
+                        .take(8)
+                        .joinToString("\n") {
+                            "• ${it.substringAfterLast('.')}"
+                        } +
+                        if (requestedPermissions.size > 8) {
+                            "\n• And ${requestedPermissions.size - 8} more"
+                        } else {
+                            ""
+                        }
+                }
+
+            selectedAppView.text =
+                "Selected App: $appName\n" +
+                "Package: $packageName\n" +
+                "Declared permissions: ${requestedPermissions.size}\n" +
+                "Granted permissions reported: ${grantedPermissions.size}\n\n" +
+                permissionSummary
+
+            clearAppButton.visibility = View.VISIBLE
+
+            resultBadge.text = "APP SELECTED"
+            resultBadge.setTextColor(navy)
+
+            resultView.text =
+                "App selected successfully.\n\n" +
+                "Tap Analyze Security Risks to analyze its supported permissions."
+
+        } catch (e: Exception) {
+
+            selectedAppView.text =
+                "Unable to read app information: ${e.message}"
+
+            selectedAppPackage = null
+            selectedAppName = null
+            selectedAppPermissions = emptyList()
+            selectedAppGrantedPermissions = emptySet()
+
+            clearAppButton.visibility = View.GONE
+        }
+    }
+
+    // CLEAR SELECTED APP
+
+    private fun clearSelectedApp() {
+
+        selectedAppPackage = null
+        selectedAppName = null
+        selectedAppPermissions = emptyList()
+        selectedAppGrantedPermissions = emptySet()
+
+        selectedAppView.text =
+            "No app selected. You can use manual permission analysis below."
+
+        clearAppButton.visibility = View.GONE
+
+        resultBadge.text = "WAITING"
+        resultBadge.setTextColor(secondaryText)
+
+        resultView.text =
+            "App selection cleared.\n\nYou can now select permissions manually."
+    }
+
+    // EXISTING BACKEND ANALYSIS LOGIC + APP ANALYSIS
 
     private fun analyzeSelection() {
 
-        val selected = permissionChecks
-            .filterValues { it.isChecked }
-            .keys
-            .toList()
+        val appPackage = selectedAppPackage
+        val appName = selectedAppName
+
+        // If an app is selected, use its supported declared permissions.
+        // Otherwise, preserve the original manual selection behavior.
+
+        val selected: List<String> =
+            if (appPackage != null) {
+
+                selectedAppPermissions
+                    .map {
+                        it.substringAfterLast('.')
+                    }
+                    .filter {
+                        permissionDescriptions.containsKey(it)
+                    }
+                    .distinct()
+
+            } else {
+
+                permissionChecks
+                    .filterValues { it.isChecked }
+                    .keys
+                    .toList()
+            }
 
         if (selected.isEmpty()) {
+
             resultBadge.text = "SELECT REQUIRED"
+
             resultView.text =
-                "Please select at least one permission before starting the security analysis."
+                if (appPackage != null) {
+                    "The selected app does not declare any of the permissions supported by this analyzer.\n\n" +
+                    "You can clear the app selection and use manual permission analysis."
+                } else {
+                    "Please select at least one permission before starting the security analysis."
+                }
+
             return
         }
 
@@ -562,7 +854,8 @@ class MainActivity : Activity() {
         resultBadge.text = "PROCESSING"
 
         resultView.text =
-            "Connecting to security analysis server...\n\nPlease wait while your permissions are being analyzed."
+            "Connecting to security analysis server...\n\n" +
+            "Please wait while the permissions are being analyzed."
 
         Thread {
 
@@ -589,6 +882,8 @@ class MainActivity : Activity() {
                         "application/json"
                     )
                 }
+
+                // Preserve the existing backend request format.
 
                 val requestBody = JSONObject().apply {
                     put(
@@ -623,7 +918,7 @@ class MainActivity : Activity() {
 
                 if (statusCode !in 200..299) {
                     throw Exception(
-                        "Server error: HTTP $statusCode"
+                        "Server error: HTTP $statusCode\n$responseText"
                     )
                 }
 
@@ -644,6 +939,42 @@ class MainActivity : Activity() {
                 )
 
                 val result = buildString {
+
+                    if (appPackage != null) {
+
+                        append("SELECTED APPLICATION\n")
+                        append("$appName\n")
+                        append("Package: $appPackage\n\n")
+
+                        append("DECLARED PERMISSIONS\n")
+
+                        if (selectedAppPermissions.isEmpty()) {
+                            append("No declared permissions found.\n")
+                        } else {
+
+                            selectedAppPermissions.forEach { permission ->
+
+                                val shortName =
+                                    permission.substringAfterLast('.')
+
+                                val grantStatus =
+                                    if (
+                                        selectedAppGrantedPermissions.contains(
+                                            permission
+                                        )
+                                    ) {
+                                        "Granted (reported)"
+                                    } else {
+                                        "Not reported as granted"
+                                    }
+
+                                append("• $shortName\n")
+                                append("  Status: $grantStatus\n")
+                            }
+                        }
+
+                        append("\n")
+                    }
 
                     append("RISK LEVEL\n")
                     append("$level\n\n")
@@ -678,6 +1009,13 @@ class MainActivity : Activity() {
 
                     append("DISCLAIMER\n")
                     append(disclaimerText)
+
+                    if (appPackage != null) {
+                        append(
+                            "\n\nNote: This report analyzes declared permission information. " +
+                            "It does not prove that the selected app is malicious or monitor its behavior."
+                        )
+                    }
                 }
 
                 runOnUiThread {
@@ -705,7 +1043,12 @@ class MainActivity : Activity() {
                         20
                     )
 
-                    resultTitle.text = "Security Report"
+                    resultTitle.text =
+                        if (appPackage != null) {
+                            "App Security Report"
+                        } else {
+                            "Security Report"
+                        }
                 }
 
             } catch (e: Exception) {
