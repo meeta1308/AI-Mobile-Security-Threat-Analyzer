@@ -5,6 +5,7 @@ import re
 
 from flask import Flask, jsonify, request
 from google import genai
+from google.genai import types
 
 
 app = Flask(__name__)
