@@ -1007,7 +1007,8 @@ class MainActivity : Activity() {
 
                 val recommendations =
                     response.optJSONArray("recommendations")
-
+                val permissionIntelligence =
+                    response.optJSONArray("permission_intelligence")
                 // Build final report
 
                 val result = buildString {
@@ -1061,10 +1062,53 @@ class MainActivity : Activity() {
                     }
 
                     // AI SUMMARY
+                    
+                    // PERMISSION INTELLIGENCE
+
+                    append("PERMISSION INTELLIGENCE\n\n")
+
+                    if (
+                        permissionIntelligence != null &&
+                        permissionIntelligence.length() > 0
+                    ) {
+
+                        for (i in 0 until permissionIntelligence.length()) {
+
+                            val item =
+                                permissionIntelligence.getJSONObject(i)
+
+                            append("Permission: ${item.optString("permission")}\n")
+
+                            append(
+                                "Description: ${item.optString("description")}\n"
+                            )
+
+                            append(
+                                "Data Exposure: ${item.optString("data_exposure")}\n"
+                            )
+
+                            append(
+                                "Sensitivity: ${item.optString("sensitivity")}\n"
+                            )
+
+                            append(
+                                "Grant Status: ${item.optString("grant_status")}\n"
+                            )
+
+                            append(
+                                "Purpose Relevance: ${item.optString("purpose_relevance")}\n\n"
+                            )
+                        }
+
+                    } else {
+
+                        append("Permission intelligence data unavailable.\n\n")
+                    }
+
+                    // AI SUMMARY
 
                     append("AI SECURITY SUMMARY\n")
                     append("$aiSummary\n\n")
-
                     // AI RECOMMENDATIONS
 
                     append("AI RECOMMENDATIONS\n")
