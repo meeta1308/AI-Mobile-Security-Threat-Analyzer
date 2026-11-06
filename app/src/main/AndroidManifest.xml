@@ -1,5 +1,4 @@
-
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
 
@@ -13,7 +12,9 @@
 
     <application
         android:allowBackup="false"
-        android:label="Mobile Threat Analyzer"
+        android:label="AI Mobile Security Threat Analyzer"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
         android:theme="@android:style/Theme.Material.Light.NoActionBar"
         android:usesCleartextTraffic="false">
 

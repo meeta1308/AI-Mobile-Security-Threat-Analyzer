@@ -8,6 +8,8 @@ import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -17,6 +19,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.ScrollView
 import android.widget.TextView
 import org.json.JSONObject
@@ -43,14 +46,19 @@ class MainActivity : Activity() {
     private lateinit var selectAppButton: Button
     private lateinit var clearAppButton: Button
 
-    // Modern Navy + Cyan Theme
-    private val navy = Color.rgb(12, 25, 48)
-    private val navyLight = Color.rgb(23, 43, 72)
-    private val cyan = Color.rgb(0, 210, 230)
-    private val backgroundColor = Color.rgb(241, 246, 251)
-    private val cardWhite = Color.WHITE
-    private val darkText = Color.rgb(25, 42, 65)
-    private val secondaryText = Color.rgb(105, 123, 145)
+    // Dark cyber-security palette
+    private val navy = Color.rgb(7, 12, 29)
+    private val navyLight = Color.rgb(17, 27, 54)
+    private val panel = Color.rgb(20, 31, 59)
+    private val panelRaised = Color.rgb(27, 41, 73)
+    private val cyan = Color.rgb(53, 217, 255)
+    private val purple = Color.rgb(157, 105, 255)
+    private val backgroundColor = Color.rgb(8, 14, 32)
+    private val cardWhite = Color.rgb(20, 31, 59)
+    private val darkText = Color.rgb(239, 246, 255)
+    private val secondaryText = Color.rgb(165, 181, 207)
+    private val openingHandler = Handler(Looper.getMainLooper())
+    private var openingRunnable: Runnable? = null
 
     private val permissionDescriptions = linkedMapOf(
         "CAMERA" to Pair(
@@ -92,7 +100,79 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        createDashboard()
+        window.statusBarColor = navy
+        window.navigationBarColor = navy
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = 0
+        if (savedInstanceState == null) showOpeningSequence() else createDashboard()
+    }
+
+    private fun showOpeningSequence() {
+        showOpeningPage(showIntro = false)
+        openingRunnable = Runnable {
+            if (isFinishing || isDestroyed) return@Runnable
+            showOpeningPage(showIntro = true)
+            openingRunnable = Runnable {
+                if (isFinishing || isDestroyed) return@Runnable
+                createDashboard()
+            }
+            openingHandler.postDelayed(openingRunnable!!, 2000L)
+        }
+        openingHandler.postDelayed(openingRunnable!!, 2000L)
+    }
+
+    private fun showOpeningPage(showIntro: Boolean) {
+        val page = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(28), dp(28), dp(28))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(navy, Color.rgb(18, 25, 58), Color.rgb(30, 19, 65))
+            )
+        }
+        val logo = ImageView(this).apply {
+            setImageResource(R.drawable.app_logo)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "AI Mobile Security Threat Analyzer logo"
+            alpha = 0f
+            scaleX = 0.78f
+            scaleY = 0.78f
+        }
+        val logoSize = if (showIntro) 164 else 224
+        page.addView(logo, LinearLayout.LayoutParams(dp(logoSize), dp(logoSize)))
+        if (showIntro) {
+            addSpace(page, 26)
+            page.addView(createText("AI MOBILE SECURITY", 21f, Color.WHITE, true).apply {
+                gravity = Gravity.CENTER
+                letterSpacing = 0.10f
+            })
+            addSpace(page, 7)
+            page.addView(createText("THREAT ANALYZER", 17f, cyan, true).apply {
+                gravity = Gravity.CENTER
+                letterSpacing = 0.16f
+            })
+            addSpace(page, 15)
+            page.addView(createText("Smart analysis. Safer mobile experience.", 13f, secondaryText).apply {
+                gravity = Gravity.CENTER
+            })
+        }
+        setContentView(page)
+        logo.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(650L).start()
+        if (showIntro) {
+            for (i in 1 until page.childCount) {
+                page.getChildAt(i).alpha = 0f
+                page.getChildAt(i).translationY = dp(12).toFloat()
+                page.getChildAt(i).animate().alpha(1f).translationY(0f)
+                    .setStartDelay(180L + i * 90L).setDuration(450L).start()
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        openingRunnable?.let { openingHandler.removeCallbacks(it) }
+        openingHandler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
     private fun dp(value: Int): Int {
@@ -208,7 +288,7 @@ class MainActivity : Activity() {
         val subtitle = createText(
             "Analyze permission risks and identify potential security concerns.",
             14f,
-            Color.rgb(204, 220, 238)
+            Color.rgb(190, 207, 235)
         )
 
         header.addView(subtitle)
@@ -220,7 +300,7 @@ class MainActivity : Activity() {
             setTextColor(cyan)
             setTypeface(null, Typeface.BOLD)
             background = roundedBackground(
-                Color.rgb(30, 57, 83),
+                Color.rgb(34, 48, 83),
                 20
             )
             setPadding(
@@ -303,10 +383,10 @@ class MainActivity : Activity() {
         clearAppButton = Button(this).apply {
             text = "CLEAR APP SELECTION"
             textSize = 12f
-            setTextColor(navy)
+            setTextColor(darkText)
             isAllCaps = false
             background = roundedBackground(
-                Color.rgb(226, 239, 250),
+                Color.rgb(29, 43, 75),
                 12
             )
             visibility = View.GONE
@@ -355,7 +435,7 @@ class MainActivity : Activity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = roundedBackground(
-                    cardWhite,
+                    panel,
                     15
                 )
                 setPadding(
@@ -495,7 +575,7 @@ class MainActivity : Activity() {
         val resultCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedBackground(
-                cardWhite,
+                panel,
                 18
             )
             setPadding(
@@ -575,7 +655,7 @@ class MainActivity : Activity() {
         val disclaimerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = roundedBackground(
-                Color.rgb(226, 239, 250),
+                Color.rgb(29, 43, 75),
                 14
             )
             setPadding(
@@ -601,7 +681,7 @@ class MainActivity : Activity() {
             createText(
                 "Declared permissions indicate what an app requests, not necessarily what it currently uses. Permission indicators alone cannot prove that an app is malicious. This prototype does not monitor app behavior.",
                 12f,
-                Color.rgb(69, 91, 116)
+                Color.rgb(177, 193, 218)
             )
         )
 
@@ -631,6 +711,8 @@ class MainActivity : Activity() {
         )
 
         setContentView(root)
+        root.alpha = 0f
+        root.animate().alpha(1f).setDuration(500L).start()
     }
 
     // INSTALLED APP LIST
@@ -777,7 +859,7 @@ class MainActivity : Activity() {
             clearAppButton.visibility = View.VISIBLE
 
             resultBadge.text = "APP SELECTED"
-            resultBadge.setTextColor(navy)
+            resultBadge.setTextColor(cyan)
 
             resultView.text =
                 "App selected successfully.\n\n" +
@@ -1196,18 +1278,18 @@ class MainActivity : Activity() {
 
                     resultBadge.setTextColor(
                         when (level.uppercase()) {
-                            "HIGH" -> Color.rgb(190, 40, 50)
-                            "MEDIUM" -> Color.rgb(185, 115, 0)
-                            "LOW" -> Color.rgb(20, 130, 90)
+                            "HIGH" -> Color.rgb(255, 112, 130)
+                            "MEDIUM" -> Color.rgb(255, 196, 92)
+                            "LOW" -> Color.rgb(76, 222, 166)
                             else -> navy
                         }
                     )
 
                     resultBadge.background = roundedBackground(
                         when (level.uppercase()) {
-                            "HIGH" -> Color.rgb(255, 229, 231)
-                            "MEDIUM" -> Color.rgb(255, 243, 218)
-                            "LOW" -> Color.rgb(221, 246, 235)
+                            "HIGH" -> Color.rgb(74, 34, 57)
+                            "MEDIUM" -> Color.rgb(72, 57, 34)
+                            "LOW" -> Color.rgb(25, 66, 60)
                             else -> backgroundColor
                         },
                         20
